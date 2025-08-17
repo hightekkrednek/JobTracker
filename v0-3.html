@@ -3,26 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Job Tracker Spreadsheet - Materials Fixed</title>
+<title>Job Tracker - Neat Layout</title>
 <style>
 body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
 header { background: #4CAF50; color: white; padding: 1rem; text-align: center; }
 main { padding: 1rem; max-width: 1400px; margin: auto; }
-table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; table-layout: fixed; }
-th, td { padding: 0.4rem; border: 1px solid #ccc; text-align: left; vertical-align: top; word-wrap: break-word; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { border: 1px solid #ccc; padding: 0.4rem; text-align: left; vertical-align: middle; word-wrap: break-word; }
 th { background: #eee; }
-tr.complete { background: #ffffcc; }
-tr.paid { background: #ccffcc; }
+tr.job-row.complete { background: #ffffcc; }
+tr.job-row.paid { background: #ccffcc; }
+tr.material-row { background: #f0f0f0; }
+.material-row td { padding-left: 1rem; }
 button { padding: 0.3rem 0.6rem; margin: 0.1rem; cursor: pointer; }
 input, select { width: 100%; box-sizing: border-box; padding: 0.2rem; margin:0; border:none; background:transparent; }
-.material-row td input { width: 95%; }
 #nav { margin-bottom: 1rem; }
 #nav button { background: #4CAF50; color: white; border: none; }
 </style>
 </head>
 <body>
 <header>
-<h1>Job Tracker Spreadsheet - Materials Fixed</h1>
+<h1>Job Tracker - Neat Layout</h1>
 </header>
 <main>
 <div id="nav">
@@ -95,44 +96,29 @@ function renderJobsTable(){
     const materialsCost=job.materials.reduce((s,m)=>s+m.qty*m.price,0);
     const total=laborCost+materialsCost;
 
+    // Job row
     const row=document.createElement('tr');
-    row.className=job.status==='Complete'?'complete':job.status==='Paid'?'paid':'';
+    row.className='job-row '+(job.status==='Complete'?'complete':job.status==='Paid'?'paid':'');
     row.dataset.jobId=job.id;
     row.innerHTML=`
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input type="checkbox" data-id="${job.id}">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input value="${job.customer}" data-field="customer">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input value="${job.description}" data-field="description">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input type="datetime-local" value="${job.startTime}" data-field="startTime">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input type="datetime-local" value="${job.endTime}" data-field="endTime">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input type="number" min="0" step="0.1" value="${job.hoursWorked}" data-field="hoursWorked">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <input type="number" min="0" step="0.01" value="${job.laborRate}" data-field="laborRate">
-      </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}" class="labor-cell">${laborCost.toFixed(2)}</td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}" class="materials-cell">${materialsCost.toFixed(2)}</td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}" class="total-cell">${total.toFixed(2)}</td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
+      <td><input type="checkbox" data-id="${job.id}"></td>
+      <td><input value="${job.customer}" data-field="customer"></td>
+      <td><input value="${job.description}" data-field="description"></td>
+      <td><input type="datetime-local" value="${job.startTime}" data-field="startTime"></td>
+      <td><input type="datetime-local" value="${job.endTime}" data-field="endTime"></td>
+      <td><input type="number" min="0" step="0.1" value="${job.hoursWorked}" data-field="hoursWorked"></td>
+      <td><input type="number" min="0" step="0.01" value="${job.laborRate}" data-field="laborRate"></td>
+      <td class="labor-cell">${laborCost.toFixed(2)}</td>
+      <td class="materials-cell">${materialsCost.toFixed(2)}</td>
+      <td class="total-cell">${total.toFixed(2)}</td>
+      <td>
         <select data-field="status">
           <option value="In Progress"${job.status==='In Progress'?' selected':''}>In Progress</option>
           <option value="Complete"${job.status==='Complete'?' selected':''}>Complete</option>
           <option value="Paid"${job.status==='Paid'?' selected':''}>Paid</option>
         </select>
       </td>
-      <td rowspan="${job.materials.length>0?job.materials.length+2:2}">
-        <button class="delete-btn">Delete</button>
-      </td>
+      <td><button class="delete-btn">Delete</button></td>
     `;
     tbody.appendChild(row);
 
@@ -183,7 +169,7 @@ document.querySelector('#jobsTable tbody').addEventListener('input', e=>{
   saveData();
 });
 
-// Delegate change for status
+// Status change
 document.querySelector('#jobsTable tbody').addEventListener('change', e=>{
   const select=e.target;
   const row=select.closest('tr');
@@ -194,7 +180,7 @@ document.querySelector('#jobsTable tbody').addEventListener('change', e=>{
   }
 });
 
-// Delegate buttons
+// Buttons
 document.querySelector('#jobsTable tbody').addEventListener('click', e=>{
   const btn=e.target;
   const row=btn.closest('tr');
@@ -216,10 +202,10 @@ function updateRowCalculations(jobId){
   const materialsCost=job.materials.reduce((s,m)=>s+m.qty*m.price,0);
   const total=laborCost+materialsCost;
   rows.forEach(row=>{
-    if(parseInt(row.dataset.jobId)===jobId){
-      if(row.querySelector('.labor-cell')) row.querySelector('.labor-cell').innerText=laborCost.toFixed(2);
-      if(row.querySelector('.materials-cell')) row.querySelector('.materials-cell').innerText=materialsCost.toFixed(2);
-      if(row.querySelector('.total-cell')) row.querySelector('.total-cell').innerText=total.toFixed(2);
+    if(parseInt(row.dataset.jobId)===jobId && row.classList.contains('job-row')){
+      row.querySelector('.labor-cell').innerText=laborCost.toFixed(2);
+      row.querySelector('.materials-cell').innerText=materialsCost.toFixed(2);
+      row.querySelector('.total-cell').innerText=total.toFixed(2);
     }
   });
 }
@@ -258,6 +244,6 @@ function importData(e){ const file=e.target.files[0]; if(file){ const reader=new
 
 renderJobsTable();
 </script>
-</body> 
-v0.3.1
+v0.1.2
+</body>
 </html>
