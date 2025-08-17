@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Tracker Inline Edit</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+header { background: #4CAF50; color: white; padding: 1rem; text-align: center; }
+main { padding: 1rem; max-width: 1200px; margin: auto; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+th, td { padding: 0.5rem; border: 1px solid #ccc; text-align: left; }
+th { background: #eee; }
+tr.complete { background: #ffffcc; }
+tr.paid { background: #ccffcc; }
+button { padding: 0.3rem 0.6rem; margin: 0.1rem; cursor: pointer; }
+.hidden { display: none; }
+input, select { width: 100%; box-sizing: border-box; padding: 0.2rem; margin: 0; border: none; background: transparent; }
+#nav { margin-bottom: 1rem; }
+#nav button { background: #4CAF50; color: white; border: none; }
+.material-editor { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: white; padding: 1rem; border: 2px solid #4CAF50; z-index: 10; max-width: 600px; max-height: 80%; overflow:auto; }
+.material-editor table { width: 100%; }
+.material-editor input { width: 100px; }
+.overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.3); z-index:9; }
+</style>
+</head>
+<body>
+<header>
+<h1>Job Tracker Inline Edit</h1>
+</header>
+<main>
+<div id="nav">
+<button onclick="showSection('jobsSection')">Jobs</button>
+<button onclick="showSection('reportsSection')">Reports</button>
+</div>
+
+<!-- Jobs Section -->
+<section id="jobsSection">
+<button onclick="addNewJob()">Add Job</button>
+<button onclick="calculateSelectedTotal()">Total Selected</button>
+<button onclick="markSelectedPaid()">Mark Selected Paid</button>
+<button onclick="resetData()">Reset All Data</button>
+<button onclick="exportData()">Export JSON</button>
+<input type="file" id="importFile" onchange="importData(event)">
+<table id="jobsTable">
+<thead>
+<tr>
+<th>Select</th>
+<th>Customer</th>
+<th>Description</th>
+<th>Start</th>
+<th>End</th>
+<th>Hours</th>
+<th>Rate</th>
+<th>Labor</th>
+<th>Materials</th>
+<th>Total</th>
+<th>Status</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</section>
+
+<!-- Reports Section -->
+<section id="reportsSection" class="hidden">
+<h2>Reports</h2>
+<p>Total Jobs: <span id="totalJobs">0</span></p>
+<p>Total Labor: $<span id="totalLabor">0</span></p>
+<p>Total Materials: $<span id="totalMaterials">0</span></p>
+<p>Total Income: $<span id="totalIncome">0</span></p>
+<p>Total Paid: $<span id="totalPaid">0</span></p>
+<p>Total Pending: $<span id="totalPending">0</span></p>
+</section>
+
+<!-- Material Editor -->
+<div id="materialEditor" class="hidden">
+<h3>Materials for <span id="materialJobName"></span></h3>
+<table id="materialsEditTable">
+<thead><tr><th>Name</th><th>Qty</th><th>Price</th><th>Actions</th></tr></thead>
+<tbody></tbody>
+</table>
+<button onclick="addMaterialEditRow()">Add Material</button>
+<br>
+<button onclick="saveMaterialEdits()">Save</button>
+<button onclick="closeMaterialEditor()">Cancel</button>
+</div>
+<div id="overlay" class="hidden overlay"></div>
+
+<script>
+let jobs = JSON.parse(localStorage.getItem('jobs')) || [];
+let editingMaterialsJobId = null;
+
+function showSection(id){
+  document.getElementById('jobsSection').classList.add('hidden');
+  document.getElementById('reportsSection').classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+  if(id==='jobsSection') renderJobsTable();
+  if(id==='reportsSection') renderReports();
+}
+
+function saveData(){ localStorage.setItem('jobs', JSON.stringify(jobs)); }
+
+function addNewJob(){
+  const newJob = {id: Date.now(), customer:'', description:'', startTime:'', endTime:'', hoursWorked:0, laborRate:0, materials:[], status:'In Progress', createdAt:new Date().toISOString()};
+  jobs.push(newJob);
+  saveData();
+  renderJobsTable();
+}
+
+function renderJobsTable(){
+  const tbody = document.querySelector('#jobsTable tbody');
+  tbody.innerHTML = '';
+  jobs.forEach(job=>{
+    const laborCost = job.hoursWorked*job.laborRate;
+    const materialsCost = job.materials.reduce((s,m)=>s+m.qty*m.price,0);
+    const total = laborCost+materialsCost;
+    const row = document.createElement('tr');
+    row.className=job.status==='Complete'?'complete':job.status==='Paid'?'paid':'';
+    row.innerHTML = `
+      <td><input type="checkbox" data-id="${job.id}"></td>
+      <td contenteditable="true" oninput="updateField(${job.id},'customer',this.innerText)">${job.customer}</td>
+      <td contenteditable="true" oninput="updateField(${job.id},'description',this.innerText)">${job.description}</td>
+      <td><input type="datetime-local" value="${job.startTime}" onchange="updateField(${job.id},'startTime',this.value)"></td>
+      <td><input type="datetime-local" value="${job.endTime}" onchange="updateField(${job.id},'endTime',this.value)"></td>
+      <td><input type="number" min="0" step="0.1" value="${job.hoursWorked}" onchange="updateField(${job.id},'hoursWorked',parseFloat(this.value)||0)"></td>
+      <td><input type="number" min="0" step="0.01" value="${job.laborRate}" onchange="updateField(${job.id},'laborRate',parseFloat(this.value)||0)"></td>
+      <td>${laborCost.toFixed(2)}</td>
+      <td><button onclick="editMaterials(${job.id})">${materialsCost.toFixed(2)}</button></td>
+      <td>${total.toFixed(2)}</td>
+      <td><button onclick="toggleStatus(${job.id})">${job.status}</button></td>
+      <td><button onclick="deleteJob(${job.id})">Delete</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function updateField(id, field, value){
+  jobs = jobs.map(j=>j.id===id?{...j,[field]:value}:j);
+  saveData();
+  renderJobsTable();
+}
+
+function toggleStatus(id){
+  jobs = jobs.map(j=>{
+    if(j.id===id){
+      let newStatus = j.status==='In Progress'?'Complete': j.status==='Complete'?'Paid':'In Progress';
+      return {...j, status:newStatus};
+    }
+    return j;
+  });
+  saveData();
+  renderJobsTable();
+}
+
+function deleteJob(id){ if(confirm('Delete this job?')){ jobs = jobs.filter(j=>j.id!==id); saveData(); renderJobsTable(); } }
+
+function calculateSelectedTotal(){
+  const selectedIds = Array.from(document.querySelectorAll('#jobsTable tbody input[type=checkbox]:checked')).map(cb=>parseInt(cb.dataset.id));
+  let total=0;
+  selectedIds.forEach(id=>{
+    const job = jobs.find(j=>j.id===id);
+    if(job){
+      const labor=job.hoursWorked*job.laborRate;
+      const materials=job.materials.reduce((s,m)=>s+m.qty*m.price,0);
+      total+=labor+materials;
+    }
+  });
+  alert(`Total for selected jobs: $${total.toFixed(2)}`);
+}
+
+function markSelectedPaid(){
+  const selectedIds = Array.from(document.querySelectorAll('#jobsTable tbody input[type=checkbox]:checked')).map(cb=>parseInt(cb.dataset.id));
+  jobs = jobs.map(j=>selectedIds.includes(j.id)?{...j,status:'Paid'}:j);
+  saveData();
+  renderJobsTable();
+}
+
+function renderReports(){
+  const totalJobs = jobs.length;
+  const totalLabor = jobs.reduce((s,j)=>s+j.hoursWorked*j.laborRate,0);
+  const totalMaterials = jobs.reduce((s,j)=>s+j.materials.reduce((ss,m)=>ss+m.qty*m.price,0),0);
+  const totalIncome = totalLabor+totalMaterials;
+  const totalPaid = jobs.filter(j=>j.status==='Paid').reduce((s,j)=>s+j.hoursWorked*j.laborRate+j.materials.reduce((ss,m)=>ss+m.qty*m.price,0),0);
+  const totalPending = totalIncome-totalPaid;
+  document.getElementById('totalJobs').innerText=totalJobs;
+  document.getElementById('totalLabor').innerText=totalLabor.toFixed(2);
+  document.getElementById('totalMaterials').innerText=totalMaterials.toFixed(2);
+  document.getElementById('totalIncome').innerText=totalIncome.toFixed(2);
+  document.getElementById('totalPaid').innerText=totalPaid.toFixed(2);
+  document.getElementById('totalPending').innerText=totalPending.toFixed(2);
+}
+
+function resetData(){ if(confirm("Delete all data?")){ jobs=[]; saveData(); renderJobsTable(); } }
+function exportData(){ const blob = new Blob([JSON.stringify(jobs,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='jobs_data.json'; a.click(); URL.revokeObjectURL(url); }
+function importData(e){ const file=e.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=ev=>{ try{ const imported=JSON.parse(ev.target.result); if(Array.isArray(imported)){ jobs=imported; saveData(); renderJobsTable(); alert('Data imported'); } else alert('Invalid format'); } catch(err){alert('Error reading file');} }; reader.readAsText(file); } }
+
+function editMaterials(jobId){
+  editingMaterialsJobId=jobId;
+  const job=jobs.find(j=>j.id===jobId);
+  document.getElementById('materialJobName').innerText=job.customer+' '+job.description;
+  renderMaterialsEditTable(job.materials);
+  document.getElementById('materialEditor').classList.remove('hidden');
+  document.getElementById('overlay').classList.remove('hidden');
+}
+
+function renderMaterialsEditTable(materials){
+  const tbody=document.querySelector('#materialsEditTable tbody');
+  tbody.innerHTML='';
+  materials.forEach((m,index)=>{
+    const row=document.createElement('tr');
+    row.innerHTML=`<td><input value="${m.name}"></td><td><input type="number" min="0" step="0.1" value="${m.qty}"></td><td><input type="number" min="0" step="0.01" value="${m.price}"></td><td><button onclick="removeMaterialEditRow(this)">Remove</button></td>`;
+    tbody.appendChild(row);
+  });
+}
+
+function addMaterialEditRow(){
+  const tbody=document.querySelector('#materialsEditTable tbody');
+  const row=document.createElement('tr');
+  row.innerHTML=`<td><input></td><td><input type="number" min="0" step="0.1" value="0"></td><td><input type="number" min="0" step="0.01" value="0"></td><td><button onclick="removeMaterialEditRow(this)">Remove</button></td>`;
+  tbody.appendChild(row);
+}
+
+function removeMaterialEditRow(btn){ btn.closest('tr').remove(); }
+
+function saveMaterialEdits(){
+  const materials=[];
+  document.querySelectorAll('#materialsEditTable tbody tr').forEach(row=>{
+    const inputs=row.querySelectorAll('input');
+    const name=inputs[0].value.trim();
+    const qty=parseFloat(inputs[1].value)||0;
+    const price=parseFloat(inputs[2].value)||0;
+    if(name) materials.push({name, qty, price});
+  });
+  jobs = jobs.map(j=>j.id===editingMaterialsJobId?{...j, materials}:j);
+  saveData();
+  closeMaterialEditor();
+  renderJobsTable();
+}
+
+function closeMaterialEditor(){ document.getElementById('materialEditor').classList.add('hidden'); document.getElementById('overlay').classList.add('hidden'); }
+
+renderJobsTable();
+</script>
+</body>
+</html>
