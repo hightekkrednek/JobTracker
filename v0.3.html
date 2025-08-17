@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Tracker Spreadsheet</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+header { background: #4CAF50; color: white; padding: 1rem; text-align: center; }
+main { padding: 1rem; max-width: 1400px; margin: auto; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+th, td { padding: 0.4rem; border: 1px solid #ccc; text-align: left; vertical-align: top; }
+th { background: #eee; }
+tr.complete { background: #ffffcc; }
+tr.paid { background: #ccffcc; }
+button { padding: 0.3rem 0.6rem; margin: 0.1rem; cursor: pointer; }
+input, select { width: 100%; box-sizing: border-box; padding: 0.2rem; margin:0; border:none; background:transparent; }
+.material-row td input { width: 90%; }
+#nav { margin-bottom: 1rem; }
+#nav button { background: #4CAF50; color: white; border: none; }
+.collapse-btn { cursor: pointer; color: blue; text-decoration: underline; background:none; border:none; }
+.materials-container { background:#f0f0f0; }
+</style>
+</head>
+<body>
+<header>
+<h1>Job Tracker Spreadsheet</h1>
+</header>
+<main>
+<div id="nav">
+<button onclick="showSection('jobsSection')">Jobs</button>
+<button onclick="showSection('reportsSection')">Reports</button>
+</div>
+
+<section id="jobsSection">
+<button onclick="addNewJob()">Add Job</button>
+<button onclick="calculateSelectedTotal()">Total Selected</button>
+<button onclick="markSelectedPaid()">Mark Selected Paid</button>
+<button onclick="resetData()">Reset All Data</button>
+<button onclick="exportData()">Export JSON</button>
+<input type="file" id="importFile" onchange="importData(event)">
+<table id="jobsTable">
+<thead>
+<tr>
+<th>Select</th><th>Customer</th><th>Description</th><th>Start</th><th>End</th>
+<th>Hours</th><th>Rate</th><th>Labor</th><th>Materials</th><th>Total</th><th>Status</th><th>Actions</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</section>
+
+<section id="reportsSection" class="hidden">
+<h2>Reports</h2>
+<p>Total Jobs: <span id="totalJobs">0</span></p>
+<p>Total Labor: $<span id="totalLabor">0</span></p>
+<p>Total Materials: $<span id="totalMaterials">0</span></p>
+<p>Total Income: $<span id="totalIncome">0</span></p>
+<p>Total Paid: $<span id="totalPaid">0</span></p>
+<p>Total Pending: $<span id="totalPending">0</span></p>
+</section>
+
+<script>
+let jobs = JSON.parse(localStorage.getItem('jobs')) || [];
+
+function showSection(id){
+  document.getElementById('jobsSection').classList.add('hidden');
+  document.getElementById('reportsSection').classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+  if(id==='jobsSection') renderJobsTable();
+  if(id==='reportsSection') renderReports();
+}
+
+function saveData(){ localStorage.setItem('jobs', JSON.stringify(jobs)); }
+
+function addNewJob(){
+  const newJob={id:Date.now(), customer:'', description:'', startTime:'', endTime:'',
+    hoursWorked:0, laborRate:0, materials:[], status:'In Progress', createdAt:new Date().toISOString()};
+  jobs.push(newJob); saveData(); renderJobsTable();
+}
+
+function renderJobsTable(){
+  const tbody=document.querySelector('#jobsTable tbody'); tbody.innerHTML='';
+  jobs.forEach(job=>{
+    const laborCost=job.hoursWorked*job.laborRate;
+    const materialsCost=job.materials.reduce((s,m)=>s+m.qty*m.price,0);
+    const total=laborCost+materialsCost;
+
+    const row=document.createElement('tr');
+    row.className=job.status==='Complete'?'complete':job.status==='Paid'?'paid':'';
+    row.innerHTML=`
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input type="checkbox" data-id="${job.id}">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input value="${job.customer}" oninput="updateJobField(${job.id},'customer',this.value)">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input value="${job.description}" oninput="updateJobField(${job.id},'description',this.value)">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input type="datetime-local" value="${job.startTime}" onchange="updateJobField(${job.id},'startTime',this.value)">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input type="datetime-local" value="${job.endTime}" onchange="updateJobField(${job.id},'endTime',this.value)">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input type="number" min="0" step="0.1" value="${job.hoursWorked}" onchange="updateJobField(${job.id},'hoursWorked',parseFloat(this.value)||0)">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <input type="number" min="0" step="0.01" value="${job.laborRate}" onchange="updateJobField(${job.id},'laborRate',parseFloat(this.value)||0)">
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">${laborCost.toFixed(2)}</td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">${materialsCost.toFixed(2)}</td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">${total.toFixed(2)}</td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <select onchange="updateJobField(${job.id},'status',this.value)">
+          <option value="In Progress"${job.status==='In Progress'?' selected':''}>In Progress</option>
+          <option value="Complete"${job.status==='Complete'?' selected':''}>Complete</option>
+          <option value="Paid"${job.status==='Paid'?' selected':''}>Paid</option>
+        </select>
+      </td>
+      <td rowspan="${job.materials.length>0?job.materials.length+1:1}">
+        <button onclick="deleteJob(${job.id})">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+
+    // Materials rows
+    if(job.materials.length>0){
+      job.materials.forEach((m,index)=>{
+        const matRow=document.createElement('tr');
+        matRow.className='material-row';
+        matRow.innerHTML=`<td colspan="2"><input value="${m.name}" oninput="updateMaterial(${job.id},${index},'name',this.value)"></td>
+          <td><input type="number" min="0" step="0.1" value="${m.qty}" oninput="updateMaterial(${job.id},${index},'qty',parseFloat(this.value)||0)"></td>
+          <td><input type="number" min="0" step="0.01" value="${m.price}" oninput="updateMaterial(${job.id},${index},'price',parseFloat(this.value)||0)"></td>
+          <td><button onclick="removeMaterial(${job.id},${index})">Remove</button></td>`;
+        tbody.appendChild(matRow);
+      });
+    }
+    // Add new material row
+    const addMatRow=document.createElement('tr');
+    addMatRow.className='material-row';
+    addMatRow.innerHTML=`<td colspan="5"><button onclick="addMaterial(${job.id})">Add Material</button></td>`;
+    tbody.appendChild(addMatRow);
+  });
+}
+
+function updateJobField(jobId,field,value){ jobs=jobs.map(j=>j.id===jobId?{...j,[field]:value}:j); saveData(); renderJobsTable(); }
+function updateMaterial(jobId,index,field,value){ jobs=jobs.map(j=>{ if(j.id===jobId){ j.materials[index][field]=value; } return j; }); saveData(); renderJobsTable(); }
+function addMaterial(jobId){ jobs=jobs.map(j=>{ if(j.id===jobId){ j.materials.push({name:'', qty:0, price:0}); } return j; }); saveData(); renderJobsTable(); }
+function removeMaterial(jobId,index){ jobs=jobs.map(j=>{ if(j.id===jobId){ j.materials.splice(index,1); } return j; }); saveData(); renderJobsTable(); }
+function deleteJob(id){ if(confirm('Delete this job?')){ jobs=jobs.filter(j=>j.id!==id); saveData(); renderJobsTable(); } }
+
+function calculateSelectedTotal(){
+  const selectedIds=Array.from(document.querySelectorAll('#jobsTable tbody input[type=checkbox]:checked')).map(cb=>parseInt(cb.dataset.id));
+  let total=0;
+  selectedIds.forEach(id=>{ const job=jobs.find(j=>j.id===id); if(job){ const labor=job.hoursWorked*job.laborRate; const materials=job.materials.reduce((s,m)=>s+m.qty*m.price,0); total+=labor+materials; }});
+  alert(`Total for selected jobs: $${total.toFixed(2)}`);
+}
+function markSelectedPaid(){ const selectedIds=Array.from(document.querySelectorAll('#jobsTable tbody input[type=checkbox]:checked')).map(cb=>parseInt(cb.dataset.id)); jobs=jobs.map(j=>selectedIds.includes(j.id)?{...j,status:'Paid'}:j); saveData(); renderJobsTable(); }
+
+function renderReports(){
+  const totalJobs=jobs.length;
+  const totalLabor=jobs.reduce((s,j)=>s+j.hoursWorked*j.laborRate,0);
+  const totalMaterials=jobs.reduce((s,j)=>s+j.materials.reduce((ss,m)=>ss+m.qty*m.price,0),0);
+  const totalIncome=totalLabor+totalMaterials;
+  const totalPaid=jobs.filter(j=>j.status==='Paid').reduce((s,j)=>s+j.hoursWorked*j.laborRate+j.materials.reduce((ss,m)=>ss+m.qty*m.price,0),0);
+  const totalPending=totalIncome-totalPaid;
+  document.getElementById('totalJobs').innerText=totalJobs;
+  document.getElementById('totalLabor').innerText=totalLabor.toFixed(2);
+  document.getElementById('totalMaterials').innerText=totalMaterials.toFixed(2);
+  document.getElementById('totalIncome').innerText=totalIncome.toFixed(2);
+  document.getElementById('totalPaid').innerText=totalPaid.toFixed(2);
+  document.getElementById('totalPending').innerText=totalPending.toFixed(2);
+}
+
+function resetData(){ if(confirm("Delete all data?")){ jobs=[]; saveData(); renderJobsTable(); } }
+function exportData(){ const blob=new Blob([JSON.stringify(jobs,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='jobs_data.json'; a.click(); URL.revokeObjectURL(url); }
+function importData(e){ const file=e.target.files[0]; if(file){ const reader=new FileReader(); reader.onload=ev=>{ try{ const imported=JSON.parse(ev.target.result); if(Array.isArray(imported)){ jobs=imported; saveData(); renderJobsTable(); alert('Data imported'); } else alert('Invalid format'); } catch(err){alert('Error reading file');} }; reader.readAsText(file); } }
+
+renderJobsTable();
+</script>
+</body>
+</html>
