@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Tracker</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+  header { background: #4CAF50; color: white; padding: 1rem; text-align: center; }
+  main { padding: 1rem; max-width: 1200px; margin: auto; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  th, td { padding: 0.5rem; border: 1px solid #ccc; text-align: left; }
+  th { background: #eee; }
+  tr.complete { background: #ffffcc; }
+  tr.paid { background: #ccffcc; }
+  button { padding: 0.3rem 0.6rem; margin: 0.1rem; cursor: pointer; }
+  .hidden { display: none; }
+  .material-row input { width: 80px; }
+  input, select { padding: 0.2rem; margin: 0.1rem; }
+  #nav { margin-bottom: 1rem; }
+  #nav button { background: #4CAF50; color: white; border: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Job Tracker</h1>
+</header>
+<main>
+  <div id="nav">
+    <button onclick="showSection('jobsSection')">Jobs</button>
+    <button onclick="showSection('reportsSection')">Reports</button>
+  </div>
+
+  <!-- Jobs Section -->
+  <section id="jobsSection">
+    <button onclick="showJobForm()">Add Job</button>
+    <button onclick="calculateSelectedTotal()">Total Selected</button>
+    <button onclick="markSelectedPaid()">Mark Selected Paid</button>
+    <button onclick="resetData()">Reset All Data</button>
+    <button onclick="exportData()">Export JSON</button>
+    <input type="file" id="importFile" onchange="importData(event)">
+    <table id="jobsTable">
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>Customer</th>
+          <th>Description</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Hours</th>
+          <th>Labor Rate</th>
+          <th>Labor Cost</th>
+          <th>Materials Cost</th>
+          <th>Total</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <!-- Job Form -->
+    <div id="jobFormDiv" class="hidden">
+      <h2 id="formTitle">Add Job</h2>
+      <label>Customer: <input type="text" id="customerInput"></label>
+      <label>Description: <input type="text" id="descInput"></label>
+      <label>Start Time: <input type="datetime-local" id="startInput"></label>
+      <label>End Time: <input type="datetime-local" id="endInput"></label>
+      <label>Hours Worked: <input type="number" id="hoursInput" min="0" step="0.1"></label>
+      <label>Labor Rate: <input type="number" id="rateInput" min="0" step="0.01"></label>
+
+      <h3>Materials</h3>
+      <table id="materialsTable">
+        <thead>
+          <tr><th>Name</th><th>Qty</th><th>Price</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button onclick="addMaterialRow()">Add Material</button>
+      <br>
+      <button onclick="saveJob()">Save Job</button>
+      <button onclick="cancelJobForm()">Cancel</button>
+    </div>
+  </section>
+
+  <!-- Reports Section -->
+  <section id="reportsSection" class="hidden">
+    <h2>Reports</h2>
+    <p>Total Jobs: <span id="totalJobs">0</span></p>
+    <p>Total Labor: $<span id="totalLabor">0</span></p>
+    <p>Total Materials: $<span id="totalMaterials">0</span></p>
+    <p>Total Income: $<span id="totalIncome">0</span></p>
+    <p>Total Paid: $<span id="totalPaid">0</span></p>
+    <p>Total Pending: $<span id="totalPending">0</span></p>
+  </section>
+</main>
+
+<script>
+let jobs = JSON.parse(localStorage.getItem('jobs')) || [];
+let editJobId = null;
+
+function showSection(id) {
+  document.getElementById('jobsSection').classList.add('hidden');
+  document.getElementById('reportsSection').classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+  if(id==='jobsSection') renderJobsTable();
+  if(id==='reportsSection') renderReports();
+}
+
+function saveData() {
+  localStorage.setItem('jobs', JSON.stringify(jobs));
+}
+
+function showJobForm(job=null) {
+  document.getElementById('jobFormDiv').classList.remove('hidden');
+  if(job){
+    editJobId = job.id;
+    document.getElementById('formTitle').innerText = "Edit Job";
+    document.getElementById('customerInput').value = job.customer;
+    document.getElementById('descInput').value = job.description;
+    document.getElementById('startInput').value = job.startTime || '';
+    document.getElementById('endInput').value = job.endTime || '';
+    document.getElementById('hoursInput').value = job.hoursWorked;
+    document.getElementById('rateInput').value = job.laborRate;
+    renderMaterialsTable(job.materials);
+  } else {
+    editJobId = null;
+    document.getElementById('formTitle').innerText = "Add Job";
+    document.getElementById('customerInput').value = '';
+    document.getElementById('descInput').value = '';
+    document.getElementById('startInput').value = '';
+    document.getElementById('endInput').value = '';
+    document.getElementById('hoursInput').value = '';
+    document.getElementById('rateInput').value = '';
+    renderMaterialsTable([]);
+  }
+}
+
+function cancelJobForm() {
+  document.getElementById('jobFormDiv').classList.add('hidden');
+}
+
+function renderMaterialsTable(materials) {
+  const tbody = document.getElementById('materialsTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  materials.forEach((m, index)=>{
+    const row = document.createElement('tr');
+    row.className='material-row';
+    row.innerHTML = `
+      <td><input type="text" value="${m.name}"></td>
+      <td><input type="number" min="0" step="0.1" value="${m.qty}"></td>
+      <td><input type="number" min="0" step="0.01" value="${m.price}"></td>
+      <td><button onclick="removeMaterialRow(this)">Remove</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function addMaterialRow() {
+  const tbody = document.getElementById('materialsTable').querySelector('tbody');
+  const row = document.createElement('tr');
+  row.className='material-row';
+  row.innerHTML = `
+    <td><input type="text" value=""></td>
+    <td><input type="number" min="0" step="0.1" value="0"></td>
+    <td><input type="number" min="0" step="0.01" value="0"></td>
+    <td><button onclick="removeMaterialRow(this)">Remove</button></td>
+  `;
+  tbody.appendChild(row);
+}
+
+function removeMaterialRow(btn) {
+  btn.closest('tr').remove();
+}
+
+function saveJob() {
+  const customer = document.getElementById('customerInput').value.trim();
+  const desc = document.getElementById('descInput').value.trim();
+  const start = document.getElementById('startInput').value;
+  const end = document.getElementById('endInput').value;
+  const hours = parseFloat(document.getElementById('hoursInput').value) || 0;
+  const rate = parseFloat(document.getElementById('rateInput').value) || 0;
+
+  const materials = [];
+  document.querySelectorAll('#materialsTable tbody tr').forEach(row=>{
+    const inputs = row.querySelectorAll('input');
+    const name = inputs[0].value.trim();
+    const qty = parseFloat(inputs[1].value) || 0;
+    const price = parseFloat(inputs[2].value) || 0;
+    if(name) materials.push({name, qty, price});
+  });
+
+  if(!customer){ alert("Customer required"); return; }
+
+  const job = {
+    id: editJobId || Date.now(),
+    customer,
+    description: desc,
+    startTime: start,
+    endTime: end,
+    hoursWorked: hours,
+    laborRate: rate,
+    materials,
+    status: editJobId ? jobs.find(j=>j.id===editJobId).status : "In Progress",
+    createdAt: editJobId ? jobs.find(j=>j.id===editJobId).createdAt : new Date().toISOString()
+  };
+
+  if(editJobId){
+    jobs = jobs.map(j=>j.id===editJobId ? job : j);
+  } else {
+    jobs.push(job);
+  }
+
+  saveData();
+  cancelJobForm();
+  renderJobsTable();
+}
+
+function renderJobsTable() {
+  const tbody = document.querySelector('#jobsTable tbody');
+  tbody.innerHTML = '';
+  jobs.forEach(job=>{
+    const laborCost = job.hoursWorked * job.laborRate;
+    const materialsCost = job.materials.reduce((sum,m)=>sum+m.qty*m.price,0);
+    const total = laborCost + materialsCost;
+    const row = document.createElement('tr');
+    row.className = job.status==='Complete' ? 'complete' : job.status==='Paid' ? 'paid' : '';
+    row.innerHTML = `
+      <td><input type="checkbox" data-id="${job.id}"></td>
+      <td>${job.customer}</td>
+      <td>${job.description}</td>
+      <td>${job.startTime}</td>
+      <td>${job.endTime || ''}</td>
+      <td>${job.hoursWorked}</td>
+      <td>${job.laborRate}</td>
+      <td>${laborCost.toFixed(2)}</td>
+      <td>${materialsCost.toFixed(2)}</td>
+      <td>${total.toFixed(2)}</td>
+      <td>${job.status}</td>
+      <td>
+        <button onclick='showJobForm(${JSON.stringify(job)})'>Edit</button>
+        <button onclick='markComplete(${job.id})'>Complete</button>
+        <button onclick='markPaid(${job.id})'>Paid</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function markComplete(id) {
+  jobs = jobs.map(j=>j.id===id ? {...j, status:'Complete'} : j);
+  saveData();
+  renderJobsTable();
+}
+
+function markPaid(id) {
+  jobs = jobs.map(j=>j.id===id ? {...j, status:'Paid'} : j);
+  saveData();
+  renderJobsTable();
+}
+
+function calculateSelectedTotal() {
+  const selectedIds = Array.from(document.querySelectorAll('#jobsTable tbody input[type=checkbox]:checked')).map(cb=>parseInt(cb.dataset.id));
+  let total = 0;
+  selectedIds.forEach(id=>{
+    const job = jobs.find(j=>j.id===id);
+    if(job){
+      const labor = job.hoursWorked * job.laborRate;
+      const materials = job.materials.reduce((sum,m)=>sum+m.qty*m.price,0);
+      total += labor + materials;
+    }
+  });
+  alert(`Total for selected jobs: $${total.toFixed(2)}`);
+}
+
+function markSelectedPaid() {
+  const selectedIds = Array.from(document.querySelectorAll('#jobsTable tbody input[type=checkbox]:checked')).map(cb=>parseInt(cb.dataset.id));
+  jobs = jobs.map(j=>selectedIds.includes(j.id) ? {...j, status:'Paid'} : j);
+  saveData();
+  renderJobsTable();
+}
+
+function renderReports() {
+  const totalJobs = jobs.length;
+  const totalLabor = jobs.reduce((sum,j)=>sum+j.hoursWorked*j.laborRate,0);
+  const totalMaterials = jobs.reduce((sum,j)=>sum+j.materials.reduce((s,m)=>s+m.qty*m.price,0),0);
+  const totalIncome = totalLabor + totalMaterials;
+  const totalPaid = jobs.filter(j=>j.status==='Paid').reduce((sum,j)=>sum+j.hoursWorked*j.laborRate + j.materials.reduce((s,m)=>s+m.qty*m.price,0),0);
+  const totalPending = totalIncome - totalPaid;
+
+  document.getElementById('totalJobs').innerText = totalJobs;
+  document.getElementById('totalLabor').innerText = totalLabor.toFixed(2);
+  document.getElementById('totalMaterials').innerText = totalMaterials.toFixed(2);
+  document.getElementById('totalIncome').innerText = totalIncome.toFixed(2);
+  document.getElementById('totalPaid').innerText = totalPaid.toFixed(2);
+  document.getElementById('totalPending').innerText = totalPending.toFixed(2);
+}
+
+function resetData() {
+  if(confirm("Are you sure you want to delete all data?")){
+    jobs = [];
+    saveData();
+    renderJobsTable();
+  }
+}
+
+function exportData() {
+  const dataStr = JSON.stringify(jobs, null, 2);
+  const blob = new Blob([dataStr], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "jobs_data.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if(file){
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const imported = JSON.parse(e.target.result);
+        if(Array.isArray(imported)){
+          jobs = imported;
+          saveData();
+          renderJobsTable();
+          alert("Data imported successfully!");
+        } else { alert("Invalid data format"); }
+      } catch(err){ alert("Error reading file"); }
+    };
+    reader.readAsText(file);
+  }
+}
+
+// Initialize
+renderJobsTable();
+</script>
+</body>
+</html>
